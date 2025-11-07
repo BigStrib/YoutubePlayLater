@@ -1,34 +1,553 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickQueue Dark</title>
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://www.youtube.com/iframe_api"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>YouTube Play Later</title>
+<style>
+  :root{
+    --bg: #0a0a0a;
+    --panel: #101010;   /* left list */
+    --panel-2: #151515; /* right stage (solid color) */
+    --text: #e8e8e8;
+    --muted: #a3a3a3;
+    --line: #242424;
+    --hover: rgba(255,255,255,.05);
+    --good: #46c37b;
+    --bad: #ff6b6b;
+    --radius: 14px;
+    --shadow: 0 10px 30px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
+  }
+  .app{display:flex; height:100vh; overflow:hidden}
+
+  /* LEFT = Playlist (scrollable, no scrollbar) */
+  .left{
+    width: 480px; min-width: 380px; max-width: 560px;
+    border-right: 1px solid var(--line);
+    background: var(--panel);
+    display:flex; flex-direction:column;
+    overflow:auto;
+    -ms-overflow-style:none; scrollbar-width:none;
+  }
+  .left::-webkit-scrollbar{ display:none }
+
+  .toolbar{
+    position: sticky; top:0; z-index:5;
+    background: rgba(18,18,18,.92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--line);
+    padding: 14px;
+  }
+  .search{
+    display:flex; gap:8px;
+    background: var(--panel-2);
+    border:1px solid var(--line);
+    border-radius: 12px; padding: 10px 12px;
+  }
+  .search:focus-within{ border-color: #2a2a2a; box-shadow: 0 0 0 3px rgba(255,255,255,.04) }
+  .search .in{
+    flex:1 1 auto; background:transparent; border:0; outline:0; color:var(--text); font-size:14px;
+  }
+  .search .icon-btn{
+    border:0; background:transparent; color: var(--muted); padding:6px; border-radius:10px; cursor:pointer;
+  }
+  .search .icon-btn:hover{ color: var(--text); background: var(--hover) }
+
+  .playlist{ padding: 14px; display:flex; flex-direction:column; gap:10px; }
+  .item{
+    display:grid; grid-template-columns: 140px 1fr auto; gap:12px; align-items:center;
+    padding: 10px; border:1px solid var(--line); border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.008));
+    cursor:pointer; position: relative; overflow:hidden;
+  }
+  .item:hover{ border-color:#2e2e2e; background: var(--hover) }
+  .thumb{
+    width: 140px; aspect-ratio: 16/9; border-radius: 10px; overflow:hidden; position:relative; background:#0d0d0d;
+    border:1px solid #191919;
+  }
+  .thumb img{ width:100%; height:100%; object-fit:cover; display:block }
+  .badge{
+    position:absolute; right:6px; bottom:6px;
+    padding: 2px 6px; border-radius: 6px; font-size: 12px; font-weight:700;
+    background: rgba(0,0,0,.65); color: #fff; border: 1px solid rgba(255,255,255,.12);
+  }
+  .meta{ min-width:0 }
+  .title{
+    font-weight: 700; font-size: 14px; color: var(--text);
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+    overflow: hidden; white-space: normal; line-height: 1.3; margin-bottom:6px;
+  }
+  .subline{
+    display:flex; align-items:center; gap:8px; color: var(--muted); font-size: 12.5px;
+  }
+  .avatar{ width:22px; height:22px; border-radius:50%; border:1px solid #191919; object-fit:cover; background:#0f0f0f }
+  .actions{
+    display:flex; gap:6px; opacity:0; transition:opacity .15s ease;
+  }
+  .item:hover .actions{ opacity:1 }
+  .icon-chip{
+    border:1px solid var(--line); background: rgba(255,255,255,.02); color:var(--text);
+    width:34px; height:34px; display:grid; place-items:center; border-radius: 9px; cursor:pointer;
+  }
+  .icon-chip:hover{ border-color:#2e2e2e; background: rgba(255,255,255,.06) }
+  .icon-chip[disabled]{ opacity:.4; cursor: not-allowed }
+
+  /* NOW PLAYING badge: solid black, no opacity */
+  .now-playing{
+    position:absolute; left:8px; top:8px; z-index:2;
+    background: #000; color:#fff; border:1px solid #000;
+    font-weight:700; font-size:11px; padding:2px 6px; border-radius: 6px; letter-spacing:.3px;
+  }
+  .item.active{ outline: 2px solid rgba(120,120,120,.25) }
+
+  /* RIGHT = Solid color stage (no visible container) */
+  .right{
+    flex: 1 1 auto;
+    position: relative;
+    background: var(--panel-2);
+    overflow: hidden;
+  }
+
+  /* Video iframe centered, keeps 16:9 via JS sizing */
+  .right iframe{
+    position: absolute;
+    left:50%; top:50%;
+    transform: translate(-50%, -50%);
+    border:0; display:block;
+    background: transparent;
+  }
+
+  /* Trash button positioned to video’s top-right (via JS) and shown only on video hover */
+  .player-trash{
+    position:absolute; z-index:10;
+    display:none; /* only visible when a video exists */
+    opacity:0; transition: opacity .2s ease;
+    border:1px solid var(--line);
+    background: rgba(0,0,0,.35);
+    color: var(--text);
+    width:38px; height:38px; display:grid; place-items:center; border-radius:10px; cursor:pointer;
+  }
+  .right.has-video .player-trash{ display:grid }
+  .right.has-video.hover-video .player-trash{ opacity:1 }
+  .player-trash:hover{ background: rgba(255,255,255,.06); border-color:#2e2e2e }
+
+  .icon{ width:18px; height:18px; display:inline-block; vertical-align:middle; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round }
+
+  /* Toasts */
+  .toast-wrap{
+    position: fixed; bottom: 16px; left: 16px; display:flex; flex-direction:column; gap:8px; z-index:1000;
+  }
+  .toast{
+    background: rgba(20,20,20,.96); border:1px solid var(--line); color: var(--text);
+    padding:10px 12px; border-radius:10px; display:flex; align-items:center; gap:8px; box-shadow: var(--shadow);
+    animation: toastIn .2s ease;
+  }
+  .toast.good{ border-color: rgba(70,195,123,.35); color: #dff8ea }
+  .toast.bad{ border-color: rgba(255,107,107,.4); color: #ffe1e1 }
+  @keyframes toastIn{ from{ transform: translateY(6px); opacity:0 } to{ transform: translateY(0); opacity:1 } }
+
+  @media (max-width: 980px){
+    .left{ width: 400px }
+  }
+  @media (max-width: 800px){
+    .app{ flex-direction: column }
+    .left{ width: 100%; min-width: 100%; order: -1; height: 48vh; border-right: 0; border-bottom: 1px solid var(--line) }
+    .right{ height: 52vh }
+  }
+</style>
 </head>
 <body>
-  <main id="app">
-    <aside id="sidebar">
-      <input
-        type="text"
-        id="videoInput"
-        placeholder="Paste a YouTube URL and press Enter..."
-        aria-label="YouTube URL"
-      />
+<div class="app">
+  <!-- LEFT: Playlist -->
+  <aside class="left">
+    <div class="toolbar">
+      <form class="search" id="searchForm" autocomplete="off">
+        <button type="button" class="icon-btn" title="Paste">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M19 21H8a2 2 0 0 1-2-2V7m8-4H7a2 2 0 0 0-2 2v2h6a2 2 0 0 1 2 2v10h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4" /></svg>
+        </button>
+        <input class="in" id="urlInput" placeholder="Paste a YouTube URL and press Enter…" />
+        <button type="submit" class="icon-btn" title="Add video">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </form>
+    </div>
 
-      <ul id="playlist"></ul>
-    </aside>
+    <div class="playlist" id="playlist"></div>
+  </aside>
 
-    <section id="player-section">
-      <!-- blank until a video is selected -->
-      <div id="player-wrapper" class="hidden">
-        <div id="player"></div>
-        <button id="removeCurrent" class="hidden">✕ Remove Current Video</button>
-      </div>
-    </section>
-  </main>
+  <!-- RIGHT: Solid stage (no visible container) -->
+  <div class="right" id="playerArea" aria-label="Video stage">
+    <!-- Blank solid color until a thumbnail is clicked -->
+    <button class="player-trash" id="removeCurrentBtn" title="Remove current video">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 6h18" />
+        <path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6" />
+        <path d="M10 11v6M14 11v6" />
+        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+      </svg>
+    </button>
+  </div>
+</div>
 
-  <script src="script.js" defer></script>
+<!-- Toast container -->
+<div class="toast-wrap" id="toastWrap" role="status" aria-live="polite"></div>
+
+<script>
+  // ========= CONFIG =========
+  const YT_API_KEY = "AIzaSyBzzfxj3VS2eAQEZ6jQM4S_2-K6ZIq2FQ8"; // <-- Replace with your key
+  const STORAGE_KEY = "yt_playlist_v1";
+  const ASPECT = 16 / 9;
+  // ==========================
+
+  const state = {
+    playlist: [],          // [{ id, title, channelTitle, channelId, channelIcon, thumb, duration }]
+    currentIndex: -1,
+    channelIconCache: new Map()
+  };
+
+  // DOM refs
+  const playlistEl = document.getElementById('playlist');
+  const urlInput = document.getElementById('urlInput');
+  const searchForm = document.getElementById('searchForm');
+  const playerArea = document.getElementById('playerArea');
+  const removeCurrentBtn = document.getElementById('removeCurrentBtn');
+  const toastWrap = document.getElementById('toastWrap');
+
+  // Persistence
+  function saveLocal(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ playlist: state.playlist }));
+    }catch(e){ console.warn('LocalStorage save failed', e); }
+  }
+  function loadLocal(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data && Array.isArray(data.playlist)){
+        state.playlist = data.playlist;
+        state.playlist.forEach(v => {
+          if (v.channelId && v.channelIcon) state.channelIconCache.set(v.channelId, v.channelIcon);
+        });
+      }
+    }catch(e){ console.warn('LocalStorage load failed', e); }
+  }
+
+  // Toasts
+  function toast(msg, type){
+    const el = document.createElement('div');
+    el.className = `toast ${type||''}`;
+    el.innerHTML = `
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        ${type==='good' ? '<path d="M20 6L9 17l-5-5"/>' : type==='bad' ? '<path d="M18 6L6 18M6 6l12 12"/>' : '<circle cx="12" cy="12" r="9"/>'}
+      </svg>
+      <div>${msg}</div>
+    `;
+    toastWrap.appendChild(el);
+    setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateY(6px)'; }, 2800);
+    setTimeout(()=>{ el.remove(); }, 3200);
+  }
+
+  // Extract YouTube video ID
+  function extractYouTubeId(input){
+    if (!input) return null;
+    input = input.trim();
+    if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+    try{
+      const u = new URL(input);
+      const host = u.hostname.replace(/^www\./,'');
+      if (host === 'youtu.be'){
+        const id = u.pathname.slice(1);
+        return id && id.length >= 11 ? id.substring(0,11) : null;
+      }
+      if (host.endsWith('youtube.com')){
+        if (u.searchParams.get('v')) return u.searchParams.get('v');
+        const parts = u.pathname.split('/').filter(Boolean);
+        if (parts[0]==='embed' && parts[1]) return parts[1];
+        if (parts[0]==='shorts' && parts[1]) return parts[1];
+        if (parts[0]==='live' && parts[1]) return parts[1];
+      }
+    }catch(e){}
+    return null;
+  }
+
+  // Format ISO8601 duration
+  function formatDuration(iso){
+    if (!iso) return '—';
+    const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!m) return '—';
+    let h = parseInt(m[1] || 0,10);
+    let min = parseInt(m[2] || 0,10);
+    let s = parseInt(m[3] || 0,10);
+    const total = h*3600 + min*60 + s;
+    h = Math.floor(total/3600);
+    min = Math.floor((total%3600)/60);
+    s = total%60;
+    const pad = n => n.toString().padStart(2,'0');
+    return h ? `${h}:${pad(min)}:${pad(s)}` : `${min}:${pad(s)}`;
+  }
+
+  // Fetch video metadata
+  async function fetchVideoMeta(videoId){
+    const vRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${encodeURIComponent(videoId)}&key=${YT_API_KEY}`);
+    const vData = await vRes.json();
+    const v = vData.items && vData.items[0];
+    if (!v) throw new Error('Video not found, or API quota exceeded.');
+    const title = v.snippet.title;
+    const channelId = v.snippet.channelId;
+    const channelTitle = v.snippet.channelTitle;
+    const thumb = (v.snippet.thumbnails.maxres?.url) || (v.snippet.thumbnails.high?.url) || (v.snippet.thumbnails.medium?.url) || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    const durationISO = v.contentDetails.duration;
+
+    // Channel icon (cached)
+    let channelIcon = state.channelIconCache.get(channelId);
+    if (!channelIcon){
+      const cRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${encodeURIComponent(channelId)}&key=${YT_API_KEY}`);
+      const cData = await cRes.json();
+      const c = cData.items && cData.items[0];
+      channelIcon = (c && (c.snippet.thumbnails.high?.url || c.snippet.thumbnails.default?.url)) || '';
+      state.channelIconCache.set(channelId, channelIcon);
+    }
+
+    return {
+      id: videoId,
+      title,
+      channelTitle,
+      channelId,
+      channelIcon,
+      thumb,
+      duration: formatDuration(durationISO)
+    };
+  }
+
+  // Render playlist items
+  function renderPlaylist(){
+    playlistEl.innerHTML = '';
+    state.playlist.forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = 'item' + (idx === state.currentIndex ? ' active' : '');
+      row.dataset.index = idx;
+
+      row.innerHTML = `
+        ${idx === state.currentIndex ? `<div class="now-playing">NOW PLAYING</div>` : ''}
+        <div class="thumb">
+          <img src="${item.thumb}" alt="">
+          <div class="badge">${item.duration}</div>
+        </div>
+        <div class="meta">
+          <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
+          <div class="subline">
+            <img class="avatar" src="${item.channelIcon}" alt="${escapeHtml(item.channelTitle)}" />
+            <span>${escapeHtml(item.channelTitle)}</span>
+          </div>
+        </div>
+        <div class="actions" aria-hidden="true">
+          <button class="icon-chip move-up" title="Move up" ${idx===0 ? 'disabled' : ''}>
+            <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
+          </button>
+          <button class="icon-chip move-down" title="Move down" ${idx===state.playlist.length-1 ? 'disabled' : ''}>
+            <svg class="icon" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+          </button>
+          <button class="icon-chip remove" title="Remove from playlist">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path d="M3 6h18"/><path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/>
+              <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+          </button>
+        </div>
+      `;
+      row.addEventListener('click', (e)=>{
+        if (e.target.closest('.actions')) return;
+        loadVideo(idx); // play only when clicked
+      });
+      row.querySelector('.move-up')?.addEventListener('click', (e)=>{ e.stopPropagation(); moveItem(idx, -1) });
+      row.querySelector('.move-down')?.addEventListener('click', (e)=>{ e.stopPropagation(); moveItem(idx, +1) });
+      row.querySelector('.remove')?.addEventListener('click', (e)=>{ e.stopPropagation(); removeItem(idx) });
+
+      playlistEl.appendChild(row);
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Create/update video on the right (blank solid color until this runs)
+  function loadVideo(index){
+    if (index < 0 || index >= state.playlist.length) return;
+    state.currentIndex = index;
+    const { id } = state.playlist[index];
+
+    let iframe = playerArea.querySelector('iframe');
+    const src = `https://www.youtube.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0`;
+    if (!iframe){
+      iframe = document.createElement('iframe');
+      iframe.setAttribute('allow', "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
+      iframe.allowFullscreen = true;
+      playerArea.appendChild(iframe);
+      ensureHoverBinding(iframe);
+    }
+    iframe.src = src;
+
+    playerArea.classList.add('has-video');
+    fitPlayer(); // size/center to maintain 16:9
+
+    renderPlaylist();
+    saveLocal();
+  }
+
+  // Bind hover to show trash only when hovering the video (or the trash itself)
+  function ensureHoverBinding(iframe){
+    if (iframe.dataset.hoverBound) return;
+    iframe.dataset.hoverBound = '1';
+
+    iframe.addEventListener('mouseenter', ()=> playerArea.classList.add('hover-video'));
+    iframe.addEventListener('mouseleave', ()=> {
+      if (!removeCurrentBtn.matches(':hover')) playerArea.classList.remove('hover-video');
+    });
+    removeCurrentBtn.addEventListener('mouseenter', ()=> playerArea.classList.add('hover-video'));
+    removeCurrentBtn.addEventListener('mouseleave', ()=> playerArea.classList.remove('hover-video'));
+    playerArea.addEventListener('mouseleave', ()=> playerArea.classList.remove('hover-video'));
+  }
+
+  // Trash button: stop/clear video but KEEP the thumbnail in the list
+  removeCurrentBtn.addEventListener('click', ()=>{
+    if (state.currentIndex === -1) return;
+    clearPlayer();           // blanks player
+    renderPlaylist();        // removes "NOW PLAYING" highlight
+    toast('Stopped video', '');
+  });
+
+  // Move item up/down
+  function moveItem(index, delta){
+    const newIndex = index + delta;
+    if (newIndex < 0 || newIndex >= state.playlist.length) return;
+    const temp = state.playlist[index];
+    state.playlist[index] = state.playlist[newIndex];
+    state.playlist[newIndex] = temp;
+
+    if (state.currentIndex === index) state.currentIndex = newIndex;
+    else if (state.currentIndex === newIndex) state.currentIndex = index;
+
+    renderPlaylist();
+    saveLocal();
+  }
+
+  // Remove item from playlist (this one deletes the thumbnail)
+  function removeItem(index){
+    const wasCurrent = index === state.currentIndex;
+    state.playlist.splice(index,1);
+
+    if (wasCurrent){
+      clearPlayer(); // blank stage if we removed the one that was playing
+      toast('Removed from playlist', 'bad');
+    } else {
+      if (index < state.currentIndex) state.currentIndex--;
+      toast('Removed from playlist', 'bad');
+    }
+
+    renderPlaylist();
+    saveLocal();
+  }
+
+  function clearPlayer(){
+    const iframe = playerArea.querySelector('iframe');
+    if (iframe) iframe.remove();
+    playerArea.classList.remove('has-video', 'hover-video');
+    state.currentIndex = -1;
+  }
+
+  // Fit the iframe to the right pane while keeping 16:9 (contain),
+  // AND position the trash 12px inside the video’s top-right corner.
+  function fitPlayer(){
+    const iframe = playerArea.querySelector('iframe');
+    if (!iframe) return;
+    const cw = playerArea.clientWidth;
+    const ch = playerArea.clientHeight;
+    let w = cw;
+    let h = w / ASPECT;
+    if (h > ch){
+      h = ch;
+      w = h * ASPECT;
+    }
+    iframe.style.width = w + 'px';
+    iframe.style.height = h + 'px';
+
+    const inset = 12;
+    const rightInset = Math.round((cw - w)/2 + inset);
+    const topInset = Math.round((ch - h)/2 + inset);
+    removeCurrentBtn.style.right = rightInset + 'px';
+    removeCurrentBtn.style.top = topInset + 'px';
+  }
+
+  // Handle form submit
+  searchForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const raw = urlInput.value.trim();
+    if (!raw) return;
+    const id = extractYouTubeId(raw);
+    if (!id) {
+      toast('Please paste a valid YouTube video URL.', 'bad');
+      return;
+    }
+    if (state.playlist.some(v => v.id === id)){
+      toast('That video is already in your playlist.', '');
+      urlInput.value = '';
+      return;
+    }
+    try{
+      const meta = await fetchVideoMeta(id);
+      state.playlist.push(meta);
+      renderPlaylist();
+      saveLocal();
+      toast('Added to playlist', 'good');
+      urlInput.value = '';
+    }catch(err){
+      console.error(err);
+      toast('Could not fetch video details. Check your API key/quota.', 'bad');
+    }
+  });
+
+  // Optional: Paste button
+  searchForm.querySelector('button[title="Paste"]').addEventListener('click', async ()=>{
+    try{
+      const text = await navigator.clipboard.readText();
+      if (text){
+        urlInput.value = text;
+        urlInput.focus();
+      }
+    }catch(e){
+      urlInput.focus();
+      toast('Clipboard not available. Paste manually (Ctrl/Cmd+V).', '');
+    }
+  });
+
+  // Keyboard: Arrow up/down to move current item
+  document.addEventListener('keydown', (e)=>{
+    if (document.activeElement === urlInput) return;
+    if (['ArrowUp','ArrowDown'].includes(e.key) && state.currentIndex !== -1){
+      e.preventDefault();
+      if (e.key === 'ArrowUp') moveItem(state.currentIndex, -1);
+      if (e.key === 'ArrowDown') moveItem(state.currentIndex, +1);
+    }
+  });
+
+  // Resize handling to keep video centered/scaled and trash aligned
+  window.addEventListener('resize', fitPlayer);
+  const ro = new ResizeObserver(fitPlayer);
+  ro.observe(playerArea);
+
+  // Init
+  loadLocal();
+  renderPlaylist();
+</script>
 </body>
 </html>
