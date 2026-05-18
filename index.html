@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom YouTube Player Queue</title>
+    <!-- Linking our external stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- Top Input Management -->
+    <div class="input-bar">
+        <input type="text" id="urlInput" placeholder="Paste standard link, mobile link, or shorts link here...">
+        <button onclick="addVideo()">Add Video</button>
+    </div>
+
+    <!-- Application Operational Grid -->
+    <div class="app-container">
+        
+        <!-- Left Column: Video Container Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-title">Your Playlist Queue</div>
+            <div id="queueList"></div>
+        </div>
+
+        <!-- Right Column: Full-Screen Viewport Player -->
+        <div class="player-container" id="playerContainer">
+            <div class="placeholder-text">
+                <p>?? No Video Active</p>
+                <p class="placeholder-subtext">Paste a URL above, add it, and click its card to stream.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Linking our external javascript file -->
+    <script href="script.js" src="script.js"></script>
+</body>
+</html>
