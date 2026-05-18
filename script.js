@@ -1,5 +1,5 @@
 // Hardcoded Google YouTube Data API v3 Key
-const API_KEY = 'AIzaSyDt5164sPyXzmqFqKcr-7bOxcVzail4o_s';
+const API_KEY = window.process?.env?.YTUBEPLAYLATER || import.meta.env?.VITE_YTUBEPLAYLATER || 'AIzaSyDt5164sPyXzmqFqKcr-7bOxcVzail4o_s';
 
 // URL Extractor covering standard, shared, short and mobile links
 function extractYouTubeId(url) {
