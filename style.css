@@ -230,13 +230,6 @@ body {
     color: #aaa;
 }
 
-.toggle-switch {
-    position: relative;
-    width: 36px;
-    min-width: 36px;
-    height: 20px;
-    cursor: pointer;
-}
 
 .toggle-switch input {
     display: none;
