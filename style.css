@@ -220,48 +220,6 @@ body {
     color: #aaa;
 }
 
-/* ===== AUTOPLAY TOGGLE ===== */
-.autoplay-toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 12px;
-    font-size: 13px;
-    color: #aaa;
-}
-
-
-.toggle-switch input {
-    display: none;
-}
-
-.toggle-slider {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: #515151;
-    border-radius: 10px;
-    transition: 0.3s;
-}
-
-.toggle-slider::before {
-    content: '';
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #fff;
-    top: 2px;
-    left: 2px;
-    transition: 0.3s;
-}
-
-.toggle-switch input:checked + .toggle-slider {
-    background: var(--primary);
-}
-
-.toggle-switch input:checked + .toggle-slider::before {
-    transform: translateX(16px);
-}
 
 /* ===== ADD URL SECTION ===== */
 .add-url-section {
